@@ -17,6 +17,12 @@ ENV/
 # ChromaDB
 backend/chroma_db/
 
+# Course material PDFs (kept local; can be large)
+docs/**/*.pdf
+
+# Local benchmark/scratch scripts
+_*.py
+
 # Uploads
 uploads/
 

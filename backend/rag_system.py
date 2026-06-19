@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ai_generator import AIGenerator
 from document_processor import DocumentProcessor
-from models import Course, CourseChunk, Lesson
+from models import Course
 from search_tools import CourseOutlineTool, CourseSearchTool, ToolManager
 from session_manager import SessionManager
 from vector_store import VectorStore
@@ -23,7 +23,7 @@ class RAGSystem:
             config.CHROMA_PATH, config.EMBEDDING_MODEL, config.MAX_RESULTS
         )
         self.ai_generator = AIGenerator(
-            config.ANTHROPIC_API_KEY, config.ANTHROPIC_MODEL
+            config.OLLAMA_BASE_URL, config.OLLAMA_MODEL, config.OLLAMA_API_KEY
         )
         self.session_manager = SessionManager(config.MAX_HISTORY)
 
@@ -89,33 +89,34 @@ class RAGSystem:
         # Get existing course titles to avoid re-processing
         existing_course_titles = set(self.vector_store.get_existing_course_titles())
 
-        # Process each file in the folder
-        for file_name in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path) and file_name.lower().endswith(
-                (".pdf", ".docx", ".txt")
-            ):
-                try:
-                    # Check if this course might already exist
-                    # We'll process the document to get the course ID, but only add if new
-                    course, course_chunks = (
-                        self.document_processor.process_course_document(file_path)
-                    )
-
-                    if course and course.title not in existing_course_titles:
-                        # This is a new course - add it to the vector store
-                        self.vector_store.add_course_metadata(course)
-                        self.vector_store.add_course_content(course_chunks)
-                        total_courses += 1
-                        total_chunks += len(course_chunks)
-                        print(
-                            f"Added new course: {course.title} ({len(course_chunks)} chunks)"
+        # Process each file in the folder and any subfolders (recursively)
+        for root, _dirs, files in os.walk(folder_path):
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+                if os.path.isfile(file_path) and file_name.lower().endswith(
+                    (".pdf", ".txt")
+                ):
+                    try:
+                        # Check if this course might already exist
+                        # We'll process the document to get the course ID, but only add if new
+                        course, course_chunks = (
+                            self.document_processor.process_course_document(file_path)
                         )
-                        existing_course_titles.add(course.title)
-                    elif course:
-                        print(f"Course already exists: {course.title} - skipping")
-                except Exception as e:
-                    print(f"Error processing {file_name}: {e}")
+
+                        if course and course.title not in existing_course_titles:
+                            # This is a new course - add it to the vector store
+                            self.vector_store.add_course_metadata(course)
+                            self.vector_store.add_course_content(course_chunks)
+                            total_courses += 1
+                            total_chunks += len(course_chunks)
+                            print(
+                                f"Added new course: {course.title} ({len(course_chunks)} chunks)"
+                            )
+                            existing_course_titles.add(course.title)
+                        elif course:
+                            print(f"Course already exists: {course.title} - skipping")
+                    except Exception as e:
+                        print(f"Error processing {file_name}: {e}")
 
         return total_courses, total_chunks
 

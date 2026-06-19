@@ -2,6 +2,8 @@ import os
 import re
 from typing import List, Tuple
 
+from pypdf import PdfReader
+
 from models import Course, CourseChunk, Lesson
 
 
@@ -13,7 +15,14 @@ class DocumentProcessor:
         self.chunk_overlap = chunk_overlap
 
     def read_file(self, file_path: str) -> str:
-        """Read content from file with UTF-8 encoding"""
+        """Read content from a file, dispatching on extension.
+
+        PDFs are parsed with pypdf (binary); all other files (e.g. .txt) are
+        read as UTF-8 text.
+        """
+        if file_path.lower().endswith(".pdf"):
+            return self._read_pdf(file_path)
+
         try:
             with open(file_path, "r", encoding="utf-8") as file:
                 return file.read()
@@ -21,6 +30,16 @@ class DocumentProcessor:
             # If UTF-8 fails, try with error handling
             with open(file_path, "r", encoding="utf-8", errors="ignore") as file:
                 return file.read()
+
+    def _read_pdf(self, file_path: str) -> str:
+        """Extract text from a PDF, one page per block, joined by blank lines."""
+        reader = PdfReader(file_path)
+        pages = []
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            if text.strip():
+                pages.append(text)
+        return "\n\n".join(pages)
 
     def chunk_text(self, text: str) -> List[str]:
         """Split text into sentence-based chunks with overlap using config settings"""

@@ -126,15 +126,10 @@ async def startup_event():
             print(f"Error loading documents: {e}")
 
 
-import os
-from pathlib import Path
-
 from fastapi.responses import FileResponse
 
+
 # Custom static file handler with no-cache headers for development
-from fastapi.staticfiles import StaticFiles
-
-
 class DevStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)

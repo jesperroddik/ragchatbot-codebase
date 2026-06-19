@@ -17,8 +17,9 @@ class TestConfig:
         """Test default configuration values"""
         default_config = Config()
 
-        # Test API settings
-        assert default_config.ANTHROPIC_MODEL == "claude-sonnet-4-20250514"
+        # Test LLM settings
+        assert default_config.OLLAMA_MODEL == "llama3.1"
+        assert default_config.OLLAMA_BASE_URL == "http://localhost:11434/v1"
         assert default_config.EMBEDDING_MODEL == "all-MiniLM-L6-v2"
 
         # Test document processing settings
@@ -29,15 +30,13 @@ class TestConfig:
         # Test database paths
         assert default_config.CHROMA_PATH == "./chroma_db"
 
-    def test_broken_max_results_configuration(self):
-        """Test the critical MAX_RESULTS=0 configuration issue"""
+    def test_default_max_results_is_usable(self):
+        """Test that MAX_RESULTS defaults to a working value (the old 0 bug is fixed)"""
         default_config = Config()
 
-        # This test documents the current broken state
-        assert default_config.MAX_RESULTS == 0  # This is the bug!
-
-        # This value should be > 0 for the system to work properly
-        # When MAX_RESULTS=0, the vector search returns no results
+        # MAX_RESULTS must be > 0 or vector search returns nothing
+        assert default_config.MAX_RESULTS == 5
+        assert default_config.MAX_RESULTS > 0
 
     def test_proper_max_results_configuration(self):
         """Test what the MAX_RESULTS configuration should be"""
@@ -57,23 +56,25 @@ class TestConfig:
         with patch.dict(
             os.environ,
             {
-                "ANTHROPIC_API_KEY": "test-env-key",
-                "ANTHROPIC_MODEL": "claude-test-model",
+                "OLLAMA_BASE_URL": "http://remote-ollama:11434/v1",
+                "OLLAMA_MODEL": "qwen2.5",
             },
         ):
             # Create new config instance to pick up env vars
             test_config = Config()
 
-            assert test_config.ANTHROPIC_API_KEY == "test-env-key"
-            assert test_config.ANTHROPIC_MODEL == "claude-test-model"
+            assert test_config.OLLAMA_BASE_URL == "http://remote-ollama:11434/v1"
+            assert test_config.OLLAMA_MODEL == "qwen2.5"
 
-    def test_config_missing_api_key(self):
-        """Test configuration when API key is missing"""
+    def test_config_defaults_when_env_missing(self):
+        """Test configuration falls back to local Ollama defaults"""
         with patch.dict(os.environ, {}, clear=True):
             test_config = Config()
 
-            # Should default to empty string when env var not set
-            assert test_config.ANTHROPIC_API_KEY == ""
+            # Should default to local Ollama settings with no API key required
+            assert test_config.OLLAMA_BASE_URL == "http://localhost:11434/v1"
+            assert test_config.OLLAMA_MODEL == "llama3.1"
+            assert test_config.OLLAMA_API_KEY == "ollama"
 
     def test_config_chunk_settings_valid(self):
         """Test that chunk processing settings are valid"""
@@ -103,8 +104,9 @@ class TestConfig:
         """Test AI model configuration"""
         test_config = Config()
 
-        # Should use Claude model
-        assert "claude" in test_config.ANTHROPIC_MODEL.lower()
+        # Should target a local Ollama model over an OpenAI-compatible endpoint
+        assert test_config.OLLAMA_MODEL != ""
+        assert test_config.OLLAMA_BASE_URL.startswith("http")
 
         # Should use sentence transformer for embeddings
         assert test_config.EMBEDDING_MODEL != ""
@@ -120,16 +122,16 @@ class TestConfig:
         assert config.MAX_RESULTS == 5
 
     def test_config_impact_on_vector_search(self):
-        """Test how MAX_RESULTS=0 impacts vector search behavior"""
+        """Test how MAX_RESULTS impacts vector search behavior"""
         broken_config = Config()
-        proper_config = Config()
-        proper_config.MAX_RESULTS = 5
+        broken_config.MAX_RESULTS = 0  # Simulate the old broken setting
+        proper_config = Config()  # Default is now a working value
 
         # Demonstrate the difference
         assert broken_config.MAX_RESULTS == 0  # Broken - will return no results
-        assert proper_config.MAX_RESULTS == 5  # Fixed - will return results
+        assert proper_config.MAX_RESULTS == 5  # Default - will return results
 
-        # This test shows why the system fails:
+        # This test shows why MAX_RESULTS=0 fails:
         # When max_results is used as n_results in ChromaDB query,
         # n_results=0 means "return 0 results" regardless of matches
 
@@ -138,8 +140,9 @@ class TestConfig:
         test_config = Config()
 
         # String values
-        assert isinstance(test_config.ANTHROPIC_API_KEY, str)
-        assert isinstance(test_config.ANTHROPIC_MODEL, str)
+        assert isinstance(test_config.OLLAMA_BASE_URL, str)
+        assert isinstance(test_config.OLLAMA_MODEL, str)
+        assert isinstance(test_config.OLLAMA_API_KEY, str)
         assert isinstance(test_config.EMBEDDING_MODEL, str)
         assert isinstance(test_config.CHROMA_PATH, str)
 
@@ -154,7 +157,7 @@ class TestConfig:
         # This test shows what validation logic could be added
 
         def validate_config(cfg):
-            """Example validation function"""
+            """Example validation function (no API key needed for local Ollama)"""
             errors = []
 
             if cfg.MAX_RESULTS <= 0:
@@ -163,13 +166,11 @@ class TestConfig:
             if cfg.CHUNK_OVERLAP >= cfg.CHUNK_SIZE:
                 errors.append("CHUNK_OVERLAP must be less than CHUNK_SIZE")
 
-            if cfg.ANTHROPIC_API_KEY == "":
-                errors.append("ANTHROPIC_API_KEY is required")
-
             return errors
 
-        # Test current broken config
+        # Test a broken config (MAX_RESULTS=0)
         broken_config = Config()
+        broken_config.MAX_RESULTS = 0
         errors = validate_config(broken_config)
 
         # Should have validation errors
@@ -179,7 +180,6 @@ class TestConfig:
         # Test proper config
         proper_config = Config()
         proper_config.MAX_RESULTS = 5
-        proper_config.ANTHROPIC_API_KEY = "valid-key"
 
         errors = validate_config(proper_config)
         # Should have fewer errors (only missing API key if not set in env)
@@ -241,7 +241,7 @@ class TestConfig:
 
         # Changes to one shouldn't affect the other
         config1.MAX_RESULTS = 10
-        assert config2.MAX_RESULTS == 0  # Still the default broken value
+        assert config2.MAX_RESULTS == 5  # Still the default value
 
     @pytest.mark.parametrize(
         "max_results,expected_behavior",

@@ -118,28 +118,43 @@ def mock_vector_store():
     return mock
 
 
+def make_openai_text_response(text: str):
+    """Build a mock OpenAI chat completion that returns plain text (no tools)."""
+    message = Mock()
+    message.content = text
+    message.tool_calls = None
+    response = Mock()
+    response.choices = [Mock(message=message)]
+    return response
+
+
+def make_openai_tool_response(tool_calls):
+    """Build a mock OpenAI chat completion that requests tool calls.
+
+    tool_calls: list of (id, name, arguments_json) tuples.
+    """
+    message = Mock()
+    message.content = None
+    message.tool_calls = []
+    for call_id, name, arguments in tool_calls:
+        tc = Mock()
+        tc.id = call_id
+        tc.function = Mock()
+        tc.function.name = name
+        tc.function.arguments = arguments
+        message.tool_calls.append(tc)
+    response = Mock()
+    response.choices = [Mock(message=message)]
+    return response
+
+
 @pytest.fixture
-def mock_anthropic_client():
-    """Create a mock Anthropic client for testing"""
+def mock_openai_client():
+    """Create a mock OpenAI (Ollama-compatible) client for testing"""
     mock_client = Mock()
-
-    # Mock response for direct text response
-    mock_response = Mock()
-    mock_response.content = [Mock()]
-    mock_response.content[0].text = "This is a test response from Claude."
-    mock_response.stop_reason = "end_turn"
-
-    # Mock response for tool use
-    mock_tool_response = Mock()
-    mock_tool_response.stop_reason = "tool_use"
-    mock_tool_content = Mock()
-    mock_tool_content.type = "tool_use"
-    mock_tool_content.name = "search_course_content"
-    mock_tool_content.id = "tool_123"
-    mock_tool_content.input = {"query": "test query"}
-    mock_tool_response.content = [mock_tool_content]
-
-    mock_client.messages.create.return_value = mock_response
+    mock_client.chat.completions.create.return_value = make_openai_text_response(
+        "This is a test response from the model."
+    )
     return mock_client
 
 
@@ -170,8 +185,9 @@ def mock_tool_manager():
 def test_config():
     """Create a test configuration with proper settings"""
     return Config(
-        ANTHROPIC_API_KEY="test-api-key",
-        ANTHROPIC_MODEL="claude-sonnet-4-20250514",
+        OLLAMA_BASE_URL="http://localhost:11434/v1",
+        OLLAMA_MODEL="llama3.1",
+        OLLAMA_API_KEY="ollama",
         EMBEDDING_MODEL="all-MiniLM-L6-v2",
         CHUNK_SIZE=800,
         CHUNK_OVERLAP=100,
@@ -185,8 +201,9 @@ def test_config():
 def broken_config():
     """Create a configuration with the broken MAX_RESULTS=0 setting"""
     return Config(
-        ANTHROPIC_API_KEY="test-api-key",
-        ANTHROPIC_MODEL="claude-sonnet-4-20250514",
+        OLLAMA_BASE_URL="http://localhost:11434/v1",
+        OLLAMA_MODEL="llama3.1",
+        OLLAMA_API_KEY="ollama",
         EMBEDDING_MODEL="all-MiniLM-L6-v2",
         CHUNK_SIZE=800,
         CHUNK_OVERLAP=100,

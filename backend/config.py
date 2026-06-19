@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -11,9 +11,22 @@ load_dotenv()
 class Config:
     """Configuration settings for the RAG system"""
 
-    # Anthropic API settings
-    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    # LLM settings (Ollama via its OpenAI-compatible endpoint)
+    # No API key is needed for local Ollama; the OpenAI client just requires a
+    # non-empty string, so OLLAMA_API_KEY defaults to a dummy value.
+    # default_factory reads env at instantiation time (after load_dotenv), so a
+    # .env file is respected and overrides work without re-importing the module.
+    OLLAMA_BASE_URL: str = field(
+        default_factory=lambda: os.getenv(
+            "OLLAMA_BASE_URL", "http://localhost:11434/v1"
+        )
+    )
+    OLLAMA_MODEL: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_MODEL", "llama3.1")
+    )
+    OLLAMA_API_KEY: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_API_KEY", "ollama")
+    )
 
     # Embedding model settings
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"

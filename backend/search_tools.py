@@ -9,7 +9,7 @@ class Tool(ABC):
 
     @abstractmethod
     def get_tool_definition(self) -> Dict[str, Any]:
-        """Return Anthropic tool definition for this tool"""
+        """Return the tool definition (JSON-schema style) for this tool"""
         pass
 
     @abstractmethod
@@ -27,7 +27,7 @@ class CourseSearchTool(Tool):
         self.last_source_links = []  # Track lesson links from last search
 
     def get_tool_definition(self) -> Dict[str, Any]:
-        """Return Anthropic tool definition for this tool"""
+        """Return the tool definition (JSON-schema style) for this tool"""
         return {
             "name": "search_course_content",
             "description": "Search course materials with smart course name matching and lesson filtering",
@@ -68,6 +68,11 @@ class CourseSearchTool(Tool):
         Returns:
             Formatted search results or error message
         """
+
+        # Reset tracked sources so stale results from a previous search are not
+        # attributed to this query (e.g. when this search errors or is empty).
+        self.last_sources = []
+        self.last_source_links = []
 
         # Use the vector store's unified search interface
         results = self.store.search(
@@ -134,7 +139,7 @@ class CourseOutlineTool(Tool):
         self.store = vector_store
 
     def get_tool_definition(self) -> Dict[str, Any]:
-        """Return Anthropic tool definition for this tool"""
+        """Return the tool definition (JSON-schema style) for this tool"""
         return {
             "name": "get_course_outline",
             "description": "Get course outline with title, link, and complete lesson list",
@@ -215,7 +220,7 @@ class ToolManager:
         self.tools[tool_name] = tool
 
     def get_tool_definitions(self) -> list:
-        """Get all tool definitions for Anthropic tool calling"""
+        """Get all tool definitions (provider-neutral; converted per-LLM at call time)"""
         return [tool.get_tool_definition() for tool in self.tools.values()]
 
     def execute_tool(self, tool_name: str, **kwargs) -> str:

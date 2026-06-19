@@ -131,10 +131,11 @@ class TestRAGSystem:
             call_args = mock_ai_gen.return_value.generate_response.call_args[1]
             assert call_args["conversation_history"] == "Previous conversation"
 
-            # Verify session was updated
+            # Verify session was updated with the raw user query (not the
+            # internal prompt wrapper, which should not pollute history)
             mock_session.return_value.add_exchange.assert_called_once_with(
                 "session123",
-                "Answer this question about course materials: Follow up question",
+                "Follow up question",
                 "Follow-up response.",
             )
 
@@ -279,16 +280,18 @@ class TestRAGSystem:
             patch("rag_system.AIGenerator"),
             patch("rag_system.SessionManager"),
             patch("os.path.exists") as mock_exists,
-            patch("os.listdir") as mock_listdir,
+            patch("os.path.isfile", return_value=True),
+            patch("os.walk") as mock_walk,
         ):
 
-            # Setup mocks
+            # Setup mocks (add_course_folder walks the tree recursively)
             mock_exists.return_value = True
-            mock_listdir.return_value = [
-                "course1.pdf",
-                "course2.txt",
-                "course3.docx",
-                "ignore.jpg",
+            mock_walk.return_value = [
+                (
+                    "/path/to/docs",
+                    [],
+                    ["course1.pdf", "course2.txt", "course3.pdf", "ignore.jpg"],
+                )
             ]
             mock_vector_store.return_value.get_existing_course_titles.return_value = []
 
@@ -321,7 +324,7 @@ class TestRAGSystem:
             assert total_courses == 3
             assert total_chunks == 3
 
-            # Verify only PDF, TXT, DOCX files were processed (not JPG)
+            # Verify only PDF and TXT files were processed (not JPG)
             assert mock_doc_proc.return_value.process_course_document.call_count == 3
 
     def test_add_course_folder_with_clear_existing(self, test_config):
@@ -332,11 +335,11 @@ class TestRAGSystem:
             patch("rag_system.AIGenerator"),
             patch("rag_system.SessionManager"),
             patch("os.path.exists") as mock_exists,
-            patch("os.listdir") as mock_listdir,
+            patch("os.walk") as mock_walk,
         ):
 
             mock_exists.return_value = True
-            mock_listdir.return_value = []
+            mock_walk.return_value = [("/path/to/docs", [], [])]
 
             rag_system = RAGSystem(test_config)
 
@@ -354,11 +357,12 @@ class TestRAGSystem:
             patch("rag_system.AIGenerator"),
             patch("rag_system.SessionManager"),
             patch("os.path.exists") as mock_exists,
-            patch("os.listdir") as mock_listdir,
+            patch("os.path.isfile", return_value=True),
+            patch("os.walk") as mock_walk,
         ):
 
             mock_exists.return_value = True
-            mock_listdir.return_value = ["course1.pdf"]
+            mock_walk.return_value = [("/path/to/docs", [], ["course1.pdf"])]
 
             # Mock existing course titles
             mock_vector_store.return_value.get_existing_course_titles.return_value = [
